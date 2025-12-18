@@ -21,7 +21,7 @@ import {
 
 // --- Constants ---
 // YOUR GOOGLE SHEET URL
-const GOOGLE_SHEET_URL = "[https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0](https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0)"; 
+const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0";
 
 // --- Components ---
 
