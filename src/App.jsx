@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Activity, 
   Moon, 
@@ -16,12 +16,12 @@ import {
   Edit2,       
   ExternalLink,
   Save,
-  Calendar
+  Calendar,
+  BarChart2
 } from 'lucide-react';
 
 // --- Constants ---
-// YOUR GOOGLE SHEET URL
-const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0";
+const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0"; 
 
 // --- Components ---
 
@@ -31,6 +31,81 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
+// Custom Simple Line Chart (SVG)
+const SimpleLineChart = ({ data, dataKey, color, unit, target }) => {
+  if (!data || data.length < 2) {
+    return (
+      <div className="h-32 flex items-center justify-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400 text-sm">
+        Log at least 2 days of data to see trends
+      </div>
+    );
+  }
+
+  // Sort data by date
+  const sortedData = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+  
+  // Find min and max for scaling
+  const values = sortedData.map(d => parseFloat(d[dataKey]));
+  const minVal = Math.min(...values, target ? target : Infinity) * 0.95;
+  const maxVal = Math.max(...values, target ? target : -Infinity) * 1.05;
+  const range = maxVal - minVal;
+
+  const width = 300;
+  const height = 150;
+  
+  // Calculate points
+  const points = sortedData.map((d, i) => {
+    const x = (i / (sortedData.length - 1)) * width;
+    const y = height - ((parseFloat(d[dataKey]) - minVal) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  // Calculate target line
+  const targetY = target ? height - ((target - minVal) / range) * height : null;
+
+  return (
+    <div className="w-full overflow-hidden">
+      <svg viewBox={`0 0 ${width} ${height + 20}`} className="w-full h-auto overflow-visible">
+        {/* Target Line */}
+        {target && (
+          <line x1="0" y1={targetY} x2={width} y2={targetY} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" />
+        )}
+        
+        {/* The Data Line */}
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth="3"
+          points={points}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Data Points */}
+        {sortedData.map((d, i) => {
+          const x = (i / (sortedData.length - 1)) * width;
+          const y = height - ((parseFloat(d[dataKey]) - minVal) / range) * height;
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r="4" fill="white" stroke={color} strokeWidth="2" />
+              {/* Show value on last point */}
+              {i === sortedData.length - 1 && (
+                <text x={x} y={y - 10} textAnchor="middle" fill={color} fontSize="12" fontWeight="bold">
+                  {d[dataKey]}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        
+        {/* Dates */}
+        <text x="0" y={height + 15} fill="#94a3b8" fontSize="10">{sortedData[0].date.slice(5)}</text>
+        <text x={width} y={height + 15} textAnchor="end" fill="#94a3b8" fontSize="10">{sortedData[sortedData.length - 1].date.slice(5)}</text>
+      </svg>
+    </div>
+  );
+};
+
 const ProgressRing = ({ radius, stroke, progress, color = "text-emerald-500" }) => {
   const normalizedRadius = radius - stroke * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
@@ -39,20 +114,8 @@ const ProgressRing = ({ radius, stroke, progress, color = "text-emerald-500" }) 
   return (
     <div className="relative flex items-center justify-center">
       <svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]">
-        <circle
-          stroke="currentColor" fill="transparent" strokeWidth={stroke}
-          strokeDasharray={circumference + ' ' + circumference}
-          style={{ strokeDashoffset: 0 }}
-          r={normalizedRadius} cx={radius} cy={radius}
-          className="text-slate-100"
-        />
-        <circle
-          stroke="currentColor" fill="transparent" strokeWidth={stroke}
-          strokeDasharray={circumference + ' ' + circumference}
-          style={{ strokeDashoffset }} strokeLinecap="round"
-          r={normalizedRadius} cx={radius} cy={radius}
-          className={`${color} transition-all duration-1000 ease-out`}
-        />
+        <circle stroke="currentColor" fill="transparent" strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset: 0 }} r={normalizedRadius} cx={radius} cy={radius} className="text-slate-100" />
+        <circle stroke="currentColor" fill="transparent" strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} className={`${color} transition-all duration-1000 ease-out`} />
       </svg>
       <div className="absolute text-xl font-bold text-slate-700">{progress}%</div>
     </div>
@@ -126,16 +189,13 @@ const LogModal = ({ isOpen, onClose, currentMetrics, onSave }) => {
   const handleSave = (openSheet) => {
     onSave(formData);
     if (openSheet) {
-      // Format data for spreadsheet paste (Tab separated)
       const rowData = `${formData.date}\t${formData.weight}\t${formData.fastingSugar}\t${formData.postMealSugar}`;
-      
       const textArea = document.createElement("textarea");
       textArea.value = rowData;
       document.body.appendChild(textArea);
       textArea.select();
       try { document.execCommand('copy'); } catch (err) { console.error('Copy failed', err); }
       document.body.removeChild(textArea);
-
       window.open(GOOGLE_SHEET_URL, '_blank');
     }
     onClose();
@@ -179,7 +239,7 @@ const LogModal = ({ isOpen, onClose, currentMetrics, onSave }) => {
           </div>
         </div>
         <div className="mt-8 flex flex-col gap-3">
-          <button onClick={() => handleSave(false)} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900"><Save size={18} /> Save to App</button>
+          <button onClick={() => handleSave(false)} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900"><Save size={18} /> Save & View Trends</button>
           <button onClick={() => handleSave(true)} className="w-full py-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-100"><ExternalLink size={18} /> Save & Open Sheet</button>
         </div>
       </div>
@@ -191,11 +251,35 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [showLogModal, setShowLogModal] = useState(false);
   
+  // Load history from LocalStorage on mount
+  const [history, setHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('health_app_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   const [dailyHabits, setDailyHabits] = useState({
     walk: false, strength: false, hiit: false, sleep: false, screens: false, vitD: false, magnesium: false, fasting: false, meditation: false, movement: false, measure: false,
   });
 
   const [metrics, setMetrics] = useState({ weight: 71.5, fastingSugar: 102, postMealSugar: 140 });
+
+  // Update metrics if history changes (use the latest entry)
+  useEffect(() => {
+    if (history.length > 0) {
+      // Sort to find the latest
+      const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const latest = sorted[0];
+      setMetrics({
+        weight: latest.weight,
+        fastingSugar: latest.fastingSugar,
+        postMealSugar: latest.postMealSugar
+      });
+    }
+  }, [history]);
 
   const toggleHabit = (key) => setDailyHabits(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -203,6 +287,15 @@ export default function App() {
     const total = Object.keys(dailyHabits).length;
     const completed = Object.values(dailyHabits).filter(Boolean).length;
     return Math.round((completed / total) * 100);
+  };
+
+  const handleSaveData = (newData) => {
+    // Add to history
+    const newHistory = [...history.filter(h => h.date !== newData.date), newData];
+    setHistory(newHistory);
+    localStorage.setItem('health_app_history', JSON.stringify(newHistory));
+    
+    toggleHabit('measure');
   };
 
   const DashboardView = () => (
@@ -254,6 +347,35 @@ export default function App() {
     </div>
   );
 
+  const TrendsView = () => (
+    <div className="space-y-6 pb-20 animate-fade-in">
+      <div className="flex items-center space-x-4 mb-6">
+        <button onClick={() => setCurrentPage('dashboard')} className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors"><ArrowRight className="rotate-180" size={20} /></button>
+        <h1 className="text-2xl font-bold text-slate-800">Trends</h1>
+      </div>
+      
+      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+        <div className="flex items-center gap-2 text-blue-800 font-bold mb-2">
+          <Scale size={20} />
+          <h2>Weight History</h2>
+        </div>
+        <SimpleLineChart data={history} dataKey="weight" color="#3b82f6" unit="kg" target={65} />
+      </div>
+
+      <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+        <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2">
+          <Droplet size={20} />
+          <h2>Fasting Sugar History</h2>
+        </div>
+        <SimpleLineChart data={history} dataKey="fastingSugar" color="#10b981" unit="mg/dL" target={80} />
+      </div>
+      
+      <div className="text-center text-xs text-slate-400 mt-4">
+        Data is stored securely on your device.
+      </div>
+    </div>
+  );
+
   const FoodHelperView = () => {
     const foodCategories = [
       { title: "Protein Powerhouses", color: "bg-blue-50 border-blue-100", textColor: "text-blue-800", items: ["Tofu", "Tempeh", "Greek Yogurt", "Soya Chunk", "Paneer"] },
@@ -295,14 +417,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-emerald-200">
-      <LogModal isOpen={showLogModal} onClose={() => setShowLogModal(false)} currentMetrics={metrics} onSave={(newMetrics) => { setMetrics(newMetrics); toggleHabit('measure'); }} />
+      <LogModal isOpen={showLogModal} onClose={() => setShowLogModal(false)} currentMetrics={metrics} onSave={handleSaveData} />
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-emerald-400 to-blue-500 w-full"></div>
-        <main className="p-6 h-full overflow-y-auto">{currentPage === 'dashboard' ? <DashboardView /> : <FoodHelperView />}</main>
+        <main className="p-6 h-full overflow-y-auto">
+          {currentPage === 'dashboard' && <DashboardView />}
+          {currentPage === 'food' && <FoodHelperView />}
+          {currentPage === 'trends' && <TrendsView />}
+        </main>
         <div className="fixed bottom-6 left-0 right-0 flex justify-center z-50 pointer-events-none">
           <div className="bg-white/90 backdrop-blur-md border border-slate-200 shadow-lg rounded-full px-2 py-2 flex gap-2 pointer-events-auto">
-            <button onClick={() => setCurrentPage('dashboard')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${currentPage === 'dashboard' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>Today</button>
-            <button onClick={() => setCurrentPage('food')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${currentPage === 'food' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>Food</button>
+            <button onClick={() => setCurrentPage('dashboard')} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${currentPage === 'dashboard' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>Today</button>
+            <button onClick={() => setCurrentPage('trends')} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${currentPage === 'trends' ? 'bg-blue-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>Trends</button>
+            <button onClick={() => setCurrentPage('food')} className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${currentPage === 'food' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>Food</button>
           </div>
         </div>
       </div>
