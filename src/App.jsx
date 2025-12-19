@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 // --- Constants ---
+// YOUR GOOGLE SHEET URL (Clean connection)
 const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/15fovsh5vsZt3rr0GUEqSh89pbRcYPLh_ohbQs8ZUtA8/edit?gid=0#gid=0"; 
 
 // --- Components ---
@@ -31,11 +32,11 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
-// Custom Simple Line Chart (SVG)
+// Improved Line Chart with visible values
 const SimpleLineChart = ({ data, dataKey, color, unit, target }) => {
   if (!data || data.length < 2) {
     return (
-      <div className="h-32 flex items-center justify-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400 text-sm">
+      <div className="h-40 flex items-center justify-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400 text-sm">
         Log at least 2 days of data to see trends
       </div>
     );
@@ -44,64 +45,82 @@ const SimpleLineChart = ({ data, dataKey, color, unit, target }) => {
   // Sort data by date
   const sortedData = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
   
-  // Find min and max for scaling
+  // Find min and max for scaling with generous padding
   const values = sortedData.map(d => parseFloat(d[dataKey]));
-  const minVal = Math.min(...values, target ? target : Infinity) * 0.95;
-  const maxVal = Math.max(...values, target ? target : -Infinity) * 1.05;
+  const minVal = Math.min(...values, target ? target : Infinity) * 0.90; 
+  const maxVal = Math.max(...values, target ? target : -Infinity) * 1.10; 
   const range = maxVal - minVal;
 
-  const width = 300;
-  const height = 150;
+  const width = 320;
+  const height = 200; // Taller for better visibility
+  const padding = 25; 
   
-  // Calculate points
-  const points = sortedData.map((d, i) => {
-    const x = (i / (sortedData.length - 1)) * width;
-    const y = height - ((parseFloat(d[dataKey]) - minVal) / range) * height;
-    return `${x},${y}`;
-  }).join(' ');
-
-  // Calculate target line
-  const targetY = target ? height - ((target - minVal) / range) * height : null;
+  // Calculate target line Y position
+  const targetY = target ? height - padding - ((target - minVal) / range) * (height - padding * 2) : null;
 
   return (
-    <div className="w-full overflow-hidden">
-      <svg viewBox={`0 0 ${width} ${height + 20}`} className="w-full h-auto overflow-visible">
-        {/* Target Line */}
-        {target && (
-          <line x1="0" y1={targetY} x2={width} y2={targetY} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" />
-        )}
-        
-        {/* The Data Line */}
-        <polyline
-          fill="none"
-          stroke={color}
-          strokeWidth="3"
-          points={points}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+    <div className="w-full overflow-x-auto">
+      <div className="min-w-[320px]">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
+          {/* Background Grid Lines */}
+          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#e2e8f0" strokeWidth="1" />
+          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="#e2e8f0" strokeWidth="1" />
 
-        {/* Data Points */}
-        {sortedData.map((d, i) => {
-          const x = (i / (sortedData.length - 1)) * width;
-          const y = height - ((parseFloat(d[dataKey]) - minVal) / range) * height;
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r="4" fill="white" stroke={color} strokeWidth="2" />
-              {/* Show value on last point */}
-              {i === sortedData.length - 1 && (
-                <text x={x} y={y - 10} textAnchor="middle" fill={color} fontSize="12" fontWeight="bold">
+          {/* Target Line */}
+          {target && (
+            <>
+              <line x1={padding} y1={targetY} x2={width - padding} y2={targetY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="5 5" />
+              <text x={width - padding} y={targetY - 5} textAnchor="end" fill="#94a3b8" fontSize="10" fontWeight="bold">Target: {target}</text>
+            </>
+          )}
+          
+          {/* Connect the dots line */}
+          <polyline
+            fill="none"
+            stroke={color}
+            strokeWidth="3"
+            points={sortedData.map((d, i) => {
+              const x = padding + (i / (sortedData.length - 1)) * (width - padding * 2);
+              const y = height - padding - ((parseFloat(d[dataKey]) - minVal) / range) * (height - padding * 2);
+              return `${x},${y}`;
+            }).join(' ')}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.6"
+          />
+
+          {/* Data Points & Labels */}
+          {sortedData.map((d, i) => {
+            const x = padding + (i / (sortedData.length - 1)) * (width - padding * 2);
+            const y = height - padding - ((parseFloat(d[dataKey]) - minVal) / range) * (height - padding * 2);
+            
+            return (
+              <g key={i}>
+                {/* Dot */}
+                <circle cx={x} cy={y} r="5" fill="white" stroke={color} strokeWidth="3" />
+                
+                {/* Value Label (Big & Bold) */}
+                <text 
+                  x={x} 
+                  y={y - 12} 
+                  textAnchor="middle" 
+                  fill="#1e293b" 
+                  fontSize="14" 
+                  fontWeight="800"
+                  style={{ textShadow: "0px 2px 0px white, 0px -2px 0px white, 2px 0px 0px white, -2px 0px 0px white" }}
+                >
                   {d[dataKey]}
                 </text>
-              )}
-            </g>
-          );
-        })}
-        
-        {/* Dates */}
-        <text x="0" y={height + 15} fill="#94a3b8" fontSize="10">{sortedData[0].date.slice(5)}</text>
-        <text x={width} y={height + 15} textAnchor="end" fill="#94a3b8" fontSize="10">{sortedData[sortedData.length - 1].date.slice(5)}</text>
-      </svg>
+                
+                {/* Date Label */}
+                <text x={x} y={height - 5} textAnchor="middle" fill="#64748b" fontSize="10">
+                  {d.date.slice(5).replace('-', '/')}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 };
@@ -189,13 +208,16 @@ const LogModal = ({ isOpen, onClose, currentMetrics, onSave }) => {
   const handleSave = (openSheet) => {
     onSave(formData);
     if (openSheet) {
+      // Format data for spreadsheet paste (Tab separated)
       const rowData = `${formData.date}\t${formData.weight}\t${formData.fastingSugar}\t${formData.postMealSugar}`;
+      
       const textArea = document.createElement("textarea");
       textArea.value = rowData;
       document.body.appendChild(textArea);
       textArea.select();
       try { document.execCommand('copy'); } catch (err) { console.error('Copy failed', err); }
       document.body.removeChild(textArea);
+
       window.open(GOOGLE_SHEET_URL, '_blank');
     }
     onClose();
@@ -290,7 +312,7 @@ export default function App() {
   };
 
   const handleSaveData = (newData) => {
-    // Add to history
+    // Add to history, removing duplicates for the same day
     const newHistory = [...history.filter(h => h.date !== newData.date), newData];
     setHistory(newHistory);
     localStorage.setItem('health_app_history', JSON.stringify(newHistory));
